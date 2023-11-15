@@ -9,6 +9,7 @@ For the language grammar, please refer to Grammar section on the github page:
 */
 
 #define MAX_LENGTH 200
+
 typedef enum {
 	ASSIGN, ADD, SUB, MUL, DIV, REM, PREINC, PREDEC, POSTINC, POSTDEC, IDENTIFIER, CONSTANT, LPAR, RPAR, PLUS, MINUS, END
 } Kind;
@@ -38,7 +39,7 @@ typedef struct ASTUnit {
 	exit(0);\
 }
 // You may set DEBUG=1 to debug. Remember setting back to 0 before submit.
-#define DEBUG 0
+#define DEBUG 1
 // Split the input char array into token linked list.
 Token *lexer(const char *in);
 // Create a new token.
@@ -64,7 +65,7 @@ int condRPAR(Kind kind);
 // Check if the AST is semantically right. This function will call err() automatically if check failed.
 void semantic_check(AST *now);
 // Generate ASM code.
-void codegen(AST *root);
+int codegen(AST *root, int mode);
 // Free the whole AST.
 void freeAST(AST *now);
 
@@ -78,16 +79,26 @@ void AST_print(AST *head);
 char input[MAX_LENGTH];
 
 int main() {
+	printf("load r0 [0]\n");
+	printf("load r1 [4]\n");
+	printf("load r2 [8]\n");
 	while (fgets(input, MAX_LENGTH, stdin) != NULL) {
 		Token *content = lexer(input);
 		size_t len = token_list_to_arr(&content);
 		if (len == 0) continue;
 		AST *ast_root = parser(content, len);
 		semantic_check(ast_root);
-		codegen(ast_root);
+		//AST_print(ast_root);
+		if(ast_root == NULL) continue;
+		if(ast_root->kind == ASSIGN) codegen(ast_root, 1);
+		else codegen(ast_root, 0);
 		free(content);
 		freeAST(ast_root);
 	}
+	printf("store [0] r0\n");
+	printf("store [4] r1\n");
+	printf("store [8] r2\n");
+
 	return 0;
 }
 
@@ -225,9 +236,23 @@ AST *parse(Token *arr, int l, int r, GrammarState S) {
 		case MUL_EXPR:
 			// TODO: Implement MUL_EXPR.
 			// hint: Take ADD_EXPR as reference.
+			if((nxt = findNextSection(arr, r, l, condMUL)) != -1) {
+				now = new_AST(arr[nxt].kind, 0);
+				now->lhs = parse(arr, l, nxt - 1, MUL_EXPR);
+				now->rhs = parse(arr, nxt + 1, r, UNARY_EXPR);
+				return now;
+			}
+			return parse(arr, l, r, UNARY_EXPR);
 		case UNARY_EXPR:
 			// TODO: Implement UNARY_EXPR.
 			// hint: Take POSTFIX_EXPR as reference.
+			if (arr[l].kind == PREINC || arr[l].kind == PREDEC || arr[l].kind == PLUS || arr[l].kind == MINUS) {
+				// follow the rule
+				now = new_AST(arr[l].kind, 0);
+				now->mid = parse(arr, l + 1, r, UNARY_EXPR);
+				return now;
+			}
+			return parse(arr, l, r, POSTFIX_EXPR);
 		case POSTFIX_EXPR:
 			if (arr[r].kind == PREINC || arr[r].kind == PREDEC) {
 				// translate "PREINC", "PREDEC" into "POSTINC", "POSTDEC"
@@ -301,11 +326,210 @@ void semantic_check(AST *now) {
 	// TODO: Implement the remaining semantic_check code.
 	// hint: Follow the instruction above and ASSIGN-part code to implement.
 	// hint: Semantic of each node needs to be checked recursively (from the current node to lhs/mid/rhs node).
+	if (now->kind == PREINC || now->kind == PREDEC || now->kind == POSTINC || now->kind == POSTDEC) {
+		AST *tmp = now->mid;
+		while (tmp->kind == LPAR) tmp = tmp->mid;
+		if(tmp->kind != IDENTIFIER)
+			err("This can only be Identifier or Identifier wrapped by parentheses below Inc/Dec.");
+	}
+
+	// Recursively check each node(lhs/mid/rhs).
+	semantic_check(now->lhs);
+	semantic_check(now->mid);
+	semantic_check(now->rhs);
 }
 
-void codegen(AST *root) {
+int reg[256];
+int get_tmp_reg(){
+	int ret = -1;
+	for(int i = 3;i<256;i++){
+		if(reg[i] == 0){
+			reg[i] = 1;
+			ret = i;
+			break;
+		}
+	}
+	return ret;
+}
+
+int get_reg(AST* node) {
+	if(node->val == 'x') return 0;
+	if(node->val == 'y') return 1;
+	if(node->val == 'z') return 2;
+	return -1;
+}
+
+int codegen(AST *root, int mode) {
 	// TODO: Implement your codegen in your own way.
 	// You may modify the function parameter or the return type, even the whole structure as you wish.
+	if(!root) return 0;
+	AST *tmp;
+	int mem, ret, l, r;
+	if(mode == 0) {
+		switch (root->kind) {
+			case ASSIGN: 
+				ret = codegen(root->rhs, 1);
+				tmp = root->lhs;
+				while(tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("add r%d r%d 0\n", mem, ret);
+				break;
+
+			case PREINC:
+				tmp = root->mid;
+				while (tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("add r%d r%d 1\n", mem, mem);
+				break;
+			case PREDEC:
+				tmp = root->mid;
+				while (tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("sub r%d r%d 1\n", mem, mem);
+				break;
+			case POSTINC:
+				tmp = root->mid;
+				while (tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("add r%d r%d 1\n", mem, mem);
+				break;
+			case POSTDEC:
+				tmp = root->mid;
+				while (tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("sub r%d r%d 1\n", mem, mem);
+				break;
+			default:
+				codegen(root->rhs, mode);
+				codegen(root->mid, mode);
+				codegen(root->lhs, mode);
+				break;
+		}
+		return mem;
+	}
+	else {
+		switch(root->kind){
+			
+			case IDENTIFIER:
+				mem = get_reg(root);
+				return mem;
+				break;
+
+			case CONSTANT:
+				ret = get_tmp_reg();
+				printf("add r%d %d 0\n", ret, root->val);
+				//reg[ret] = 0;
+				break;
+
+			case ASSIGN:
+				ret = codegen(root->rhs, mode);
+				tmp = root->lhs;
+				while(tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("add r%d r%d 0\n", mem, ret);
+				break;
+
+			case ADD:
+				r = codegen(root->rhs, mode);
+				l = codegen(root->lhs, mode);
+				if(l >= 3) reg[l] = 0;
+				if(r >= 3) reg[r] = 0; 
+				ret = get_tmp_reg();
+				printf("add r%d r%d r%d\n", ret, l, r);
+				break;
+
+			case SUB:
+				r = codegen(root->rhs, mode);
+				l = codegen(root->lhs, mode);
+				if(l >= 3) reg[l] = 0;
+				if(r >= 3) reg[r] = 0; 
+				ret = get_tmp_reg();
+				printf("sub r%d r%d r%d\n", ret, l, r);
+				break;
+
+			case MUL:
+				r = codegen(root->rhs, mode);
+				l = codegen(root->lhs, mode);
+				if(l >= 3) reg[l] = 0;
+				if(r >= 3) reg[r] = 0; 
+				ret = get_tmp_reg();
+				printf("mul r%d r%d r%d\n", ret, l, r);
+				break;
+
+			case DIV:
+				r = codegen(root->rhs, mode);
+				l = codegen(root->lhs, mode);
+				if(l >= 3) reg[l] = 0;
+				if(r >= 3) reg[r] = 0; 
+				ret = get_tmp_reg();
+				printf("div r%d r%d r%d\n", ret, l, r);
+				break;
+
+			case REM:
+				r = codegen(root->rhs, mode);
+				l = codegen(root->lhs, mode);
+				if(l >= 3) reg[l] = 0;
+				if(r >= 3) reg[r] = 0;
+				ret = get_tmp_reg();
+				printf("rem r%d r%d r%d\n", ret, l, r);
+				break;
+
+			case PREINC:
+				tmp = root->mid;
+				while(tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("add r%d r%d 1\n", mem, mem);
+				return mem;
+				break;
+
+			case PREDEC:
+				tmp = root->mid;
+				while(tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				printf("sub r%d r%d 1\n", mem, mem);
+				return mem;
+				break;
+
+			case POSTINC:
+				tmp = root->mid;
+				while(tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				ret = get_tmp_reg();
+				printf("add r%d r%d 0\n", ret, mem);
+				printf("add r%d r%d 1\n", mem, mem);
+				//reg[ret] = 0;
+				break;
+
+			case POSTDEC:
+				tmp = root->mid;
+				while(tmp->kind != IDENTIFIER) tmp = tmp->mid;
+				mem = get_reg(tmp);
+				ret = get_tmp_reg();
+				printf("add r%d r%d 0\n", ret, mem);
+				printf("sub r%d r%d 1\n", mem, mem);
+				//reg[ret] = 0;
+				break;
+
+			case LPAR:
+				tmp = root->mid;
+				while(tmp->kind == LPAR) tmp = tmp->mid;
+				ret = codegen(tmp, mode);
+				break;
+				
+			case PLUS:
+				ret = codegen(root->mid, mode);
+				break;
+
+			case MINUS:
+				ret = get_tmp_reg();
+				printf("sub r%d 0 r%d\n", ret, codegen(root->mid, mode));
+				//reg[ret] = 0;
+				break;
+
+			default: break;
+		}
+		return ret;
+	}
 }
 
 void freeAST(AST *now) {

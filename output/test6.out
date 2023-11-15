@@ -1,0 +1,4 @@
+load r0 [0]
+load r1 [4]
+load r2 [8]
+Compile Error!

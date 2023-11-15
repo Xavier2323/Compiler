@@ -1,0 +1,67 @@
+load r0 [0]
+load r1 [4]
+load r2 [8]
+add r3 3 0
+mul r3 r2 r3
+add r4 2 0
+add r5 5 0
+mul r5 r5 r0
+add r5 r1 r5
+sub r4 r5 r4
+add r3 r4 r3
+add r4 5 0
+add r0 r4 0
+add r5 6 0
+add r1 r5 0
+add r6 2 0
+add r7 10 0
+div r6 r7 r6
+add r7 8 0
+mul r6 r7 r6
+add r7 5 0
+add r8 3 0
+add r7 r8 r7
+sub r6 r7 r6
+add r0 r6 0
+add r7 12 0
+add r8 12 0
+mul r7 r8 r7
+mul r8 r0 r0
+sub r7 r8 r7
+add r1 r7 0
+mul r8 r0 r1
+add r9 0 0
+add r10 r1 r2
+mul r9 r10 r9
+mul r10 r0 r2
+rem r10 r10 r2
+sub r14 0 r2
+sub r13 0 r14
+sub r12 0 r13
+sub r11 0 r12
+sub r11 r11 r2
+div r15 r2 r2
+add r11 r15 r11
+add r10 r11 r10
+add r9 r10 r9
+sub r8 r9 r8
+add r2 r8 0
+add r9 2 0
+add r10 2 0
+mul r10 r10 r0
+mul r9 r10 r9
+mul r9 r9 r0
+add r10 4 0
+mul r10 r10 r0
+mul r10 r10 r2
+mul r11 r1 r1
+sub r10 r11 r10
+sub r11 0 r1
+sub r15 0 r1
+mul r11 r15 r11
+sub r10 r11 r10
+div r9 r10 r9
+add r0 r9 0
+store [0] r0
+store [4] r1
+store [8] r2
